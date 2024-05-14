@@ -1,6 +1,7 @@
 import "package:cloud_firestore/cloud_firestore.dart";
 import "package:firebase_auth/firebase_auth.dart";
 import "package:flutter/material.dart";
+import "package:namer_app/components/my_drawer.dart";
 import "package:namer_app/pages/chat_page.dart";
 import "package:namer_app/services/auth/auth_service.dart";
 import "package:provider/provider.dart";
@@ -35,6 +36,7 @@ class _HomePageState extends State<HomePage> {
             )
           ],
         ),
+        drawer: MyDrawer(),
         body: _buildUserList(),
     );
     
@@ -64,6 +66,7 @@ class _HomePageState extends State<HomePage> {
     //Display all users except
     if(_auth.currentUser!.email != data['email']){
       return ListTile(
+        leading: Icon(Icons.email),
         title: Text(data['email']),
         onTap: (){
 

@@ -1,10 +1,18 @@
 
 
+import "dart:typed_data";
+import 'dart:io';
 import "package:cloud_firestore/cloud_firestore.dart";
 import "package:firebase_auth/firebase_auth.dart";
 import "package:flutter/material.dart";
+import "package:namer_app/components/chat_bubble.dart";
 import "package:namer_app/components/my_text_field.dart";
+import "package:namer_app/model/message.dart";
 import "package:namer_app/services/chat/chat_service.dart";
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
+import 'package:encrypt/encrypt.dart' as encrypt;
+
 
 class ChatPage extends StatefulWidget {
   final String receiverUserEmail;
@@ -39,6 +47,7 @@ class _ChatPageState extends State<ChatPage> {
           Expanded(child: _buildMessageList()),
 
           _buildMessageInput(),
+          const SizedBox(height: 25),
         ],),
     );
   }
@@ -68,7 +77,8 @@ class _ChatPageState extends State<ChatPage> {
     Map <String, dynamic> data = document.data() as Map<String,dynamic>;
 
     var alignment = (data['senderID'] == _firebaseAuth.currentUser!.uid) ? Alignment.centerRight: Alignment.centerLeft;
-
+    
+    
     return Container(
       alignment: alignment,
       child: Padding(
@@ -78,27 +88,30 @@ class _ChatPageState extends State<ChatPage> {
           mainAxisAlignment: (data['senderID'] == _firebaseAuth.currentUser!.uid) ? MainAxisAlignment.end: MainAxisAlignment.start,
           children: [
             Text(data['senderEmail']),
-            Text(data['message']),
+            const SizedBox(height: 5),
+            ChatBubble(message: data['message']),
           ],
         ),
       ),
     );
   }
-
-
+ 
   //message input
   Widget _buildMessageInput(){
-    return Row(
-      children: [
-        Expanded(
-          child: MyTextField(
-            controller: _messageController ,
-            hintText: 'Mesaj yazınız.',
-            obscureText: false,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 25),
+      child: Row(
+        children: [
+          Expanded(
+            child: MyTextField(
+              controller: _messageController ,
+              hintText: 'Mesaj yazınız.',
+              obscureText: false,
+            ),
           ),
-        ),
-        IconButton(onPressed: sendMessage, icon: Icon(Icons.arrow_upward,size: 40,))
-      ],
+          IconButton(onPressed: sendMessage, icon: Icon(Icons.arrow_upward,size: 40,))
+        ],
+      ),
     );
   }
   
