@@ -1,12 +1,13 @@
-import "dart:typed_data";
 import 'dart:io';
-import "package:cloud_firestore/cloud_firestore.dart";
-import "package:firebase_auth/firebase_auth.dart";
-import "package:flutter/material.dart";
-import "package:namer_app/components/chat_bubble.dart";
-import "package:namer_app/components/my_text_field.dart";
-import "package:namer_app/model/message.dart";
-import "package:namer_app/services/chat/chat_service.dart";
+
+import 'package:flutter/material.dart';
+import 'package:namer_app/components/chat_bubble.dart';
+import 'package:namer_app/components/my_text_field.dart';
+import 'package:namer_app/model/message.dart';
+import 'package:namer_app/services/chat/chat_service.dart';
+import 'package:namer_app/services/file_service.dart' as file_service;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ChatPage extends StatefulWidget {
   final String receiverUserEmail;
@@ -18,29 +19,61 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
-
   final TextEditingController _messageController = TextEditingController();
   final ChatService _chatService = ChatService();
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
   final ScrollController _scrollController = ScrollController();
+  File? _selectedFile;
 
   void sendMessage() async {
-    if (_messageController.text.isNotEmpty) {
-      // Encrypt the message before sending
-      String encryptedMessage = Message(
-        senderID: _firebaseAuth.currentUser!.uid,
-        senderEmail: _firebaseAuth.currentUser!.email!,
-        receiverId: widget.receiverUserID,
-        message: _messageController.text,
-        timestamp: Timestamp.now(),
-      ).encrypt();
+  if (_messageController.text.isNotEmpty || _selectedFile != null) {
+    String? message = _messageController.text.trim();
+    String? fileUrl;
+    String? fileType;
+    bool isFile = false;
 
-      await _chatService.sendMessage(widget.receiverUserID, encryptedMessage);
-      _messageController.clear();
-
-       _scrollToBottom();
+    if (_selectedFile != null) {
+      final path = 'uploads/${DateTime.now().millisecondsSinceEpoch}_${_selectedFile!.path.split('/').last}';
+      fileUrl = await _chatService.uploadFile(_selectedFile!, path);
+      
+      // Determine file type based on file extension
+      if (_selectedFile!.path.toLowerCase().endsWith('.jpg') || _selectedFile!.path.toLowerCase().endsWith('.jpeg')) {
+        fileType = 'image';
+      } else {
+        fileType = 'file';
+      }
+      
+      isFile = true;
+      message = fileUrl ?? ''; //Fd Set the message to the file URL if available, otherwise use an empty string
     }
+
+    Message newMessage = Message(
+      senderID: _firebaseAuth.currentUser!.uid,
+      senderEmail: _firebaseAuth.currentUser!.email!,
+      receiverId: widget.receiverUserID,
+      message: message,
+      timestamp: Timestamp.now(),
+      fileUrl: fileUrl,
+      fileType: fileType,
+      isFile: isFile,
+    );
+
+    await _chatService.sendMessage(
+      widget.receiverUserID,
+      newMessage.encryptMessage(),
+      fileUrl: fileUrl,
+      fileType: fileType,
+    );
+
+    _messageController.clear();
+    setState(() {
+      _selectedFile = null;
+    });
+
+    _scrollToBottom();
   }
+}
+
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -50,23 +83,46 @@ class _ChatPageState extends State<ChatPage> {
     });
   }
 
+  void _pickImage() async {
+    final file = await file_service.FileService().pickImage();
+    if (file != null) {
+      setState(() {
+        _selectedFile = file;
+      });
+    }
+  }
+
+  void _pickFile() async {
+    final file = await file_service.FileService().pickFile();
+    if (file != null) {
+      setState(() {
+        _selectedFile = file;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.receiverUserEmail),
-        
-        ),
+      ),
       body: Column(
         children: [
           Expanded(child: _buildMessageList()),
+          if (_selectedFile != null)
+            Container(
+              padding: const EdgeInsets.all(8.0),
+              child: _selectedFile!.path.endsWith('.jpg') || _selectedFile!.path.endsWith('.png') || _selectedFile!.path.endsWith('.jpeg')
+                  ? Image.file(_selectedFile!)
+                  : Text(_selectedFile!.path.split('/').last),
+            ),
           _buildMessageInput(),
         ],
       ),
     );
   }
 
-  // Message list
   Widget _buildMessageList() {
     return StreamBuilder(
       stream: _chatService.getMessages(widget.receiverUserID, _firebaseAuth.currentUser!.uid),
@@ -92,48 +148,81 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  // Message item
   Widget _buildMessageItem(DocumentSnapshot document) {
-    Map<String, dynamic> data = document.data() as Map<String, dynamic>;
-    bool isCurrentUser = data['senderID'] == _firebaseAuth.currentUser!.uid;
+  Map<String, dynamic> data = document.data() as Map<String, dynamic>;
+  bool isCurrentUser = data['senderID'] == _firebaseAuth.currentUser!.uid;
 
-    var alignment = (data['senderID'] == _firebaseAuth.currentUser!.uid) ? Alignment.centerRight : Alignment.centerLeft;
-    //print('Encrypted message: ${data['message']}');
-    // Decrypt the message before displaying
-    String decryptedMessage = Message(
-      senderID: 'placeholder_sender_id',
-      senderEmail: 'placeholder_sender_email',
-      receiverId: 'placeholder_receiver_id',
-      message: data['message'], // Pass the encrypted message here
-      timestamp: Timestamp.now(), // Pass any timestamp you prefer
-    ).decrypt();
+  var alignment = isCurrentUser ? Alignment.centerRight : Alignment.centerLeft;
 
-    //print('Decrypted message length: ${decryptedMessage.length}');
-    //print('Decrypted message content: $decryptedMessage');
+  bool isFile = data['isFile'] ?? false;
 
-    return Container(
-      alignment: alignment,
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Column(
-          crossAxisAlignment: (data['senderID'] == _firebaseAuth.currentUser!.uid) ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          mainAxisAlignment: (data['senderID'] == _firebaseAuth.currentUser!.uid) ? MainAxisAlignment.end : MainAxisAlignment.start,
-          children: [
-            Text(data['senderEmail']),
-            const SizedBox(height: 5),
-            ChatBubble(message: decryptedMessage, isCurrentUser: isCurrentUser)
-          ],
-        ),
+  String decryptedMessage = Message(
+    senderID: data['senderID'],
+    senderEmail: data['senderEmail'],
+    receiverId: data['receiverID'],
+    message: data['message'],
+    timestamp: data['timestamp'],
+    fileUrl: data['fileUrl'],
+    fileType: data['fileType'],
+    isFile: isFile,
+  ).decrypt();
+
+  print('Decrypted Message: $decryptedMessage'); // Debug print
+
+  return Container(
+    alignment: alignment,
+    child: Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: Column(
+        crossAxisAlignment: isCurrentUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        mainAxisAlignment: isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          Text(data['senderEmail']),
+          const SizedBox(height: 5),
+          if (isFile && data['fileType'] == 'image' && data['fileUrl'] != null)
+            Image.network(
+              data['fileUrl']!,
+              width: 200, 
+              height: 200, 
+              fit: BoxFit.cover, 
+            )
+          else if (isFile && data['fileType'] == 'file' && data['fileUrl'] != null)
+            GestureDetector(
+              onTap: () {
+                // Handle file download/open
+              },
+              child: Text(
+                "File: ${data['fileUrl']!.split('/').last}",
+                style: TextStyle(color: Colors.blue),
+              ),
+            )
+          else if (!isFile)
+            ChatBubble(
+              message: decryptedMessage,
+              isCurrentUser: isCurrentUser,
+              fileType: data['fileType'],
+              imageUrl: data['fileUrl'],
+            ),
+        ],
       ),
-    );
-  }
- 
-  // Message input
+    ),
+  );
+}
+
+
   Widget _buildMessageInput() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 25),
       child: Row(
         children: [
+          IconButton(
+            icon: const Icon(Icons.image),
+            onPressed: _pickImage,
+          ),
+          IconButton(
+            icon: const Icon(Icons.attach_file),
+            onPressed: _pickFile,
+          ),
           Expanded(
             child: MyTextField(
               controller: _messageController,
@@ -141,7 +230,10 @@ class _ChatPageState extends State<ChatPage> {
               obscureText: false,
             ),
           ),
-          IconButton(onPressed: sendMessage, icon: Icon(Icons.arrow_upward, size: 40))
+          IconButton(
+            onPressed: sendMessage,
+            icon: const Icon(Icons.arrow_upward, size: 40),
+          ),
         ],
       ),
     );

@@ -1,29 +1,25 @@
 import 'dart:math';
-
-import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 
 class ChatBubble extends StatelessWidget {
   final String message;
   final bool isCurrentUser;
+  final String? imageUrl; 
+  final String? fileType;
 
   const ChatBubble({
     Key? key,
     required this.message,
     required this.isCurrentUser,
+    this.imageUrl,
+    this.fileType,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // Split the message into chunks of 50 characters
-    List<String> messageChunks = [];
-    for (int i = 0; i < message.length; i += 50) {
-      messageChunks.add(message.substring(i, min(i + 50, message.length)));
-    }
-
     return Container(
       constraints: BoxConstraints(
-        maxWidth: MediaQuery.of(context).size.width * 0.7, // Maximum width is 70% of screen width
+        maxWidth: MediaQuery.of(context).size.width * 0.7,
       ),
       decoration: BoxDecoration(
         color: isCurrentUser ? Colors.green : Colors.grey,
@@ -33,13 +29,33 @@ class ChatBubble extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 2.5, horizontal: 25),
       child: Column(
         crossAxisAlignment: isCurrentUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: messageChunks.map((chunk) {
-          return Text(
-            chunk,
-            style: const TextStyle(fontSize: 16, color: Colors.white),
-            textAlign: isCurrentUser ? TextAlign.end : TextAlign.start,
-          );
-        }).toList(),
+        children: [
+          if (fileType == 'image' && imageUrl != null)
+            Image.network(
+              imageUrl!,
+              width: 200,
+              height: 200,
+              fit: BoxFit.cover,
+            )
+          else if (fileType == 'file' && message.isNotEmpty)
+            Row(
+              children: [
+                Icon(Icons.attach_file),
+                SizedBox(width: 8),
+                Text(
+                  'File: ${message.split('/').last}',
+                  style: TextStyle(fontSize: 16, color: Colors.white),
+                  textAlign: isCurrentUser ? TextAlign.end : TextAlign.start,
+                ),
+              ],
+            )
+          else
+            Text(
+              message,
+              style: const TextStyle(fontSize: 16, color: Colors.white),
+              textAlign: isCurrentUser ? TextAlign.end : TextAlign.start,
+            ),
+        ],
       ),
     );
   }
